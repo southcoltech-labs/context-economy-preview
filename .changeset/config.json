@@ -1,0 +1,8 @@
+{
+  "$schema": "../node_modules/@changesets/config/schema.json",
+  "baseBranch": "main",
+  "commit": false,
+  "format": false,
+  "changelog": "@changesets/cli/changelog",
+  "privatePackages": { "version": true, "tag": false }
+}

@@ -1,0 +1,40 @@
+{
+  "name": "context-economy",
+  "version": "0.0.0",
+  "private": true,
+  "description": "tool-gateway for Claude Code and Pi: rewrite Bash through a verified RTK and keep a metadata-only ledger. Also holds the release tooling.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "claude-code-plugin",
+    "rtk"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/tool-gateway/index.ts"
+    ]
+  },
+  "scripts": {
+    "changeset": "changeset",
+    "version": "changeset version && node scripts/sync-plugin-version.mjs",
+    "version:check": "node scripts/sync-plugin-version.mjs --check",
+    "test:tooling": "node --test 'scripts/*.test.mjs'",
+    "test:pi": "bun test extensions"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@changesets/cli": "3.0.3"
+  }
+}

@@ -1,0 +1,7 @@
+# Never commit keys or local env
+*api_key*
+*.key
+.env
+.env.*
+__pycache__/
+node_modules/

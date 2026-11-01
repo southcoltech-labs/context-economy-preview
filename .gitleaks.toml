@@ -1,0 +1,8 @@
+# gitleaks configuration. Default rules, no exceptions.
+# The full-history scan at 0535bf5 found no leaks, so no path or content allowlist is needed.
+# Any future exception must name an exact path AND a known synthetic match (design: CI, gitleaks);
+# scripts/gitleaks-config.test.mjs proves a real-looking secret planted in those files is still caught.
+title = "context-economy"
+
+[extend]
+useDefault = true

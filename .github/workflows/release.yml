@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# On main: open or update the version PR; once it merges, tag the version commit and create
+# the GitHub release. Nothing here moves `release`; promote.yml does.
+name: release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: release # protected: deployment branch main only
+    steps:
+      - name: Refuse any ref but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "release runs only from refs/heads/main, not ${{ github.ref }}" >&2
+          exit 1
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # tag-release finds the commit that set the version
+          token: ${{ steps.app.outputs.token }} # App pushes trigger CI on the version PR
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - name: Git identity for tags
+        run: |
+          git config user.name "context-economy-release[bot]"
+          git config user.email "context-economy-release[bot]@users.noreply.github.com"
+      - uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
+        with:
+          version-script: npm run -s version
+          publish-script: node scripts/tag-release.mjs
+          commit-message: "Version packages"
+          pr-title: "Version packages"
+          create-github-releases: false # tag-release.mjs tags the version commit and releases
+          push-git-tags: false
+          github-token: ${{ steps.app.outputs.token }}
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}

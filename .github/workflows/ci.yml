@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Checks for every pull request and every push to main. No secrets: never pull_request_target.
+# Check names are the REQUIRED_CHECKS that promotion verifies (promote.yml); keep the two in step.
+name: ci
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled] # the no-release label changes the gate
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CLAUDE_CODE_VERSION: "2.1.310" # the host E1a last ran on; a bump is its own PR and re-runs E1a/E1b
+
+jobs:
+  repo:
+    name: repo checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans full history; changeset status compares with main
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci --ignore-scripts
+      - name: Version sync
+        run: npm run -s version:check
+      - name: Release tooling tests
+        run: npm run -s test:tooling
+      - name: Changeset present
+        if: github.event_name == 'pull_request'
+        run: node scripts/changeset-gate.mjs # exemptions are checked against the diff there
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+      - name: Install gitleaks 8.30.1
+        run: |
+          curl -sSfL -o /tmp/gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tgz -C /usr/local/bin gitleaks
+      - name: gitleaks config self-test
+        run: node --test scripts/gitleaks-config.test.mjs
+      - name: gitleaks, full history
+        run: gitleaks git --config .gitleaks.toml --redact --no-banner .
+
+  plugins:
+    name: plugins (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest] # macos-latest is arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      # --ignore-scripts keeps every install script off; then only Claude Code's own install.cjs
+      # runs, which links the native binary from its platform package. Without it `claude` is a stub.
+      - name: Install Claude Code
+        run: |
+          npm install -g --ignore-scripts "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+          cd "$(npm root -g)/@anthropic-ai/claude-code" && node install.cjs
+          claude --version
+      - run: claude plugin validate . --strict
+      - run: claude plugin test plugins/tool-gateway
+
+  pi:
+    name: pi (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4" # the version the Pi tests were written against
+      - run: bun test extensions

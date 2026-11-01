@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Moves `release` to a tagged version once its CI and its E1a proof pass.
+# Then creates the immutable promoted-v<version> tag (the rollback route) and marks the
+# candidate's GitHub release latest; a retry finishes whichever step is missing.
+# Manual start only, from main. The candidate is read with `git show`, never checked out or run.
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to promote, e.g. v0.2.0"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote-release # serializes promotions; the lease in promote.mjs catches anything else
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: release # protected: deployment branch main only
+    steps:
+      - name: Refuse any ref but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "promotion runs only from refs/heads/main, not ${{ github.ref }}" >&2
+          exit 1
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-checks: read
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main # trusted scripts and proofs come from main, not from the candidate
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Promote
+        run: node scripts/promote.mjs "$TAG"
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          # One check name per line (names contain commas). Must match ci.yml's job names;
+          # scripts/promote-checks.test.mjs derives them from ci.yml and compares.
+          REQUIRED_CHECKS: |
+            repo checks
+            plugins (ubuntu-latest)
+            plugins (macos-latest)
+            pi (ubuntu-latest)
+            pi (macos-latest)
