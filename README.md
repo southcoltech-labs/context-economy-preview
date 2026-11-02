@@ -156,7 +156,7 @@ claude plugin test plugins/tool-gateway
 bun test extensions                            # Pi extension
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the toolchain, type checking and how changes are released.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the toolchain, type checking, commit sign-off and how changes are released.
 
 ## License
 

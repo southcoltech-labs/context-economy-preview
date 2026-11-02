@@ -66,3 +66,35 @@ version goes through the release checks again.
 
 By contributing, you agree that your contribution is licensed under the
 [Apache License 2.0](LICENSE), as the rest of the project is.
+
+## Sign-off
+
+Every commit in a pull request is signed off under the
+[Developer Certificate of Origin 1.1](https://developercertificate.org/). The sign-off certifies
+that you wrote the change, or otherwise have the right to submit it under the project's license,
+and that a record of it, including your name and e-mail, is kept publicly in the history.
+
+Sign off with `-s`, which adds a line made from your git `user.name` and `user.email`:
+
+```bash
+git commit -s -m "Explain the change"
+# Signed-off-by: Your Name <you@example.com>
+```
+
+The sign-off must match the commit's author. Use a name and e-mail you are known by; anonymous
+sign-offs are not accepted. A sign-off does not transfer your copyright.
+
+Pull requests contain no merge commits: to bring in changes from `main`, rebase your branch onto
+it instead of merging it in. The only commit accepted without a sign-off is the release
+automation's own version commit.
+
+The `repo checks` job fails a pull request with any commit that breaks these rules, and names
+each one. To fix it, sign off the commits, rebase away any merge, and force-push the branch:
+
+```bash
+git commit --amend -s --no-edit   # the last commit only
+git rebase --signoff main         # every commit since main; also replays away merge commits
+git push --force-with-lease
+```
+
+Licensing questions: license@southcoltech.com.
