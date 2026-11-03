@@ -2,8 +2,8 @@
 
 These steps are done twice, in the same way: first on the staging repository `southcoltech-labs/context-economy-preview`, once it is public, then on the public repository at publication. Nothing in the release path works until they are done. The release workflow fails at "client-id must be set" until step 2.
 
-**Who does what.** The staging repository belongs to the GitHub organization `southcoltech-labs`, whose owner is Yan Weng. So:
-- Yan Weng, as organization owner, does every step that changes settings, and runs the owner checks in step 6.
+**Who does what.** Both repositories belong to the GitHub organization `southcoltech-labs`. So:
+- An organization owner does every step that changes settings, and runs the owner checks in step 6.
 - The release engineer, with write access to the repository, runs only the collaborator checks.
 
 Nobody shares a login or credentials.
@@ -30,31 +30,57 @@ None. GitHub Free is enough for a public repository.
 
 ## 2. Release App
 
-1. Under the organization's **Settings → Developer settings → GitHub Apps → New GitHub App**, so that `southcoltech-labs` owns it:
+1. An organization owner creates it under the organization's **Settings → Developer settings → GitHub Apps → New GitHub App**, so that `southcoltech-labs` owns it:
    - Webhook: off.
    - Repository permissions: **Contents** read and write, **Pull requests** read and write, **Checks** read-only, **Metadata** read-only (always on). Nothing else.
    - Where can it be installed: **Only on this account** (the organization).
 2. Note the **Client ID**. Generate a **private key**.
 3. **Install App → Only select repositories →** the staging repository. At publication, also the public one.
-4. Credentials:
+4. Variables, which are not secret:
    - **Repository variable** `RELEASE_APP_CLIENT_ID` = the Client ID. It is not secret.
-   - **Environment secret** `RELEASE_APP_PRIVATE_KEY` = the full `.pem` contents, in the `release` environment (step 3), **never as a repository secret**. A repository secret is readable by any workflow on any branch, which could mint an App token outside the gate. An environment secret is given only to a job that names the environment, after its protections pass ([environment secrets](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)).
-   - Delete any repository-level copy. Keep the `.pem` offline or delete it; a new key can be generated.
+   - **Repository variable** `RELEASE_BOT_EMAIL` = `<bot id>+<app slug>[bot]@users.noreply.github.com`, the bot's no-reply address, with the id from `gh api 'users/<app slug>[bot]' --jq .id`. The sign-off gate lets the version PR's commits through only when their author is this address, and `release.yml` tags as it; the release workflow fails until it is set.
+5. **Don't store the private key yet.** Keep the `.pem` offline. It goes into the `release` environment at the end of step 3, once that environment's protections are configured and read back. Saving an environment secret first would create the environment with no protections.
 
-The workflows need no change: both jobs name `environment: release` and read `secrets.RELEASE_APP_PRIVATE_KEY`.
+## 3. Maintainers team and `release` environment
 
-## 3. `release` environment
+**The team first.** The environment's reviewers (here) and `CODEOWNERS` (step 4) both name `southcoltech-labs/maintainers`, and GitHub ignores a code owner without an explicit write grant on the repository. An organization owner:
+- creates the team `maintainers` under the organization's **Teams**, with visibility **Visible**, and the organization's owners as its members;
+- grants it **Write** under the repository's **Settings → Collaborators and teams**.
 
-Under **Settings → Environments → New environment**, named `release`:
+Check, read-only, before going on:
+
+```bash
+R=<owner>/<repo>
+gh api orgs/southcoltech-labs/teams/maintainers --jq .privacy                                     # closed (visible)
+gh api -H 'Accept: application/vnd.github.v3.repository+json' orgs/southcoltech-labs/teams/maintainers/repos/$R --jq '{role_name, push: .permissions.push}'   # write, true; without the header, an empty 204
+gh api repos/$R/codeowners/errors                                                                 # {"errors":[]}
+```
+
+**The environment.** Under **Settings → Environments → New environment**, named `release`:
 - **Deployment branches and tags:** selected branches only, with the single rule `main`.
-- **Approval:** required reviewers = Yan Weng.
-- **Environment secrets:** `RELEASE_APP_PRIVATE_KEY` only.
+- **Approval:** required reviewers = the team `southcoltech-labs/maintainers`, with **Prevent self-review** on, so whoever triggers a run (for a release, whoever merged into `main`) can't approve it. **Allow administrators to bypass** off.
+
+Read it back, before any secret:
+
+```bash
+gh api repos/$R/environments/release --jq '{can_admins_bypass, protection_rules, deployment_branch_policy}'
+gh api repos/$R/environments/release/deployment-branch-policies --jq '[.branch_policies[].name]'   # ["main"]
+```
+
+Expected: `can_admins_bypass: false`; `protection_rules` with `branch_policy` and `required_reviewers` = the team, `prevent_self_review: true`; custom branch policies, `main` only.
+
+**Then the key.** Only once that reads back as expected:
+- **Environment secret** `RELEASE_APP_PRIVATE_KEY` = the full `.pem` contents, in the `release` environment, **never as a repository secret**. A repository secret is readable by any workflow on any branch, which could mint an App token outside the gate. An environment secret is given only to a job that names the environment, after its protections pass ([environment secrets](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)). The environment holds no other secret.
+- Delete any repository-level copy. Keep the `.pem` offline or delete it; a new key can be generated.
+
+The workflows need no change for the key: both jobs name `environment: release` and read `secrets.RELEASE_APP_PRIVATE_KEY`.
 
 ## 4. Protect `main`
 
 Add a ruleset for `main`, with **no bypass actors**:
-- Require a pull request before merging, with at least 1 approval.
-- Require these 5 status checks, with the branch up to date. The names must match exactly, as `promote.yml` checks them too:
+- Require a pull request before merging, with at least 1 approval; dismiss stale approvals when new commits are pushed; require review from Code Owners; require approval of the most recent reviewable push. Allowed merge methods: squash and rebase.
+- Require linear history.
+- Require these 5 status checks from GitHub Actions, with the branch up to date. The names must match exactly, as `promote.yml` checks them too:
 
   ```
   repo checks
@@ -64,6 +90,7 @@ Add a ruleset for `main`, with **no bypass actors**:
   pi (macos-latest)
   ```
 
+- Also require the `DCO` check, with the DCO App as its source. Install the App from **github.com/apps/dco → Only select repositories →** this repository, and add no `.github/dco.yml`: its default requires sign-off from organization members too. The check appears only after the App has reported on a first pull request; add it then. `promote.yml` doesn't list it: it is a pull-request check, and `repo checks` enforces the same sign-off rule.
 - Block force pushes. Restrict deletions.
 
 The App's version PR goes through the same checks and review as any pull request.
@@ -91,15 +118,19 @@ If the ruleset UI on this account does not offer the App as a bypass actor, reco
 
 ## 6. Check
 
-**Owner checks** (Yan Weng, read-only), output into the setup record:
+**Owner checks** (an organization owner, read-only), output into the setup record:
 
 ```bash
 R=<owner>/<repo>
 gh api repos/$R/actions/variables/RELEASE_APP_CLIENT_ID --jq .name
+gh api repos/$R/actions/variables/RELEASE_BOT_EMAIL --jq .value                     # <bot id>+<app slug>[bot]@users.noreply.github.com
 gh api repos/$R/actions/secrets --jq '[.secrets[].name]'                          # must be []: no repository copy of the key
 gh api repos/$R/environments/release/secrets --jq '[.secrets[].name]'             # ["RELEASE_APP_PRIVATE_KEY"]
-gh api repos/$R/environments/release --jq '{protection_rules, deployment_branch_policy}'
+gh api repos/$R/environments/release --jq '{can_admins_bypass, protection_rules, deployment_branch_policy}'   # can_admins_bypass false
 gh api repos/$R/environments/release/deployment-branch-policies --jq '[.branch_policies[].name]'   # ["main"]
+gh api orgs/southcoltech-labs/teams/maintainers --jq .privacy                                     # closed
+gh api -H 'Accept: application/vnd.github.v3.repository+json' orgs/southcoltech-labs/teams/maintainers/repos/$R --jq '{role_name, push: .permissions.push}'   # write, true; without the header, an empty 204
+gh api repos/$R/codeowners/errors                                                                 # {"errors":[]}
 for id in $(gh api repos/$R/rulesets --jq '.[].id'); do gh api repos/$R/rulesets/$id; done          # full rules and bypass actors
 ```
 
@@ -126,4 +157,4 @@ The next push to `main` runs the release workflow with the App. Two changesets a
 - a `minor` one for the first preview release;
 - a `patch` one for tool-gateway.
 
-So the workflow opens the version PR `0.0.0 → 0.1.0`. When that PR passes the 5 checks and is approved and merged, the workflow tags the candidate `v0.1.0` as a prerelease. E1a then runs on that candidate (`release-proof/E1A-RUNBOOK.md`), and promotion is started by hand.
+So the workflow opens the version PR `0.0.0 → 0.1.0`. When that PR passes the required checks and is approved and merged, the workflow tags the candidate `v0.1.0` as a prerelease. E1a then runs on that candidate (`release-proof/E1A-RUNBOOK.md`), and promotion is started by hand.
