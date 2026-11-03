@@ -1,6 +1,6 @@
 {
   "name": "tool-gateway",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Rewrites Bash through a verified RTK executable and records a metadata-only ledger of tool calls.",
   "author": {
     "name": "South Col Tech, Inc.",
