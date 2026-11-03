@@ -1,0 +1,1 @@
+Throwaway acceptance test of the sign-off and review rules in CONTRIBUTING.md and docs/REVIEWING.md: the release bot's sign-off exception applies only on the version branch, so its commit elsewhere fails the sign-off gate. Closed unmerged.
