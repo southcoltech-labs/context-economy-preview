@@ -1,6 +1,6 @@
 {
   "name": "context-economy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "tool-gateway for Claude Code and Pi: rewrite Bash through a verified RTK and keep a metadata-only ledger. Also holds the release tooling.",
   "license": "Apache-2.0",
