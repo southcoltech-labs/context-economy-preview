@@ -3,7 +3,9 @@
 // Promotion's CI gate through the real CLI path: REQUIRED_CHECKS as promote.yml sets it, parsed
 // by main(), answered by a GitHub check-runs response (fake `gh`).
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -135,4 +137,54 @@ test("an unset REQUIRED_CHECKS or repository fails closed", () => {
     assert.equal(s.cli(env), 1, JSON.stringify(env));
     assert.equal(s.releaseAt(), undefined);
   }
+});
+
+/** promote.yml's step names in order, and the `run:` block of the step named `name`. */
+function promoteStep(name) {
+  const yml = read("promote.yml");
+  const names = [...yml.matchAll(/^ {6}- (?:name|uses): (.+)$/gm)].map((m) => m[1]);
+  const block = yml.split(/\n(?= {6}- )/).find((b) => b.startsWith(`      - name: ${name}\n`));
+  const lines = block.split("\n");
+  const start = lines.findIndex((l) => /^ {8}run: \|$/.test(l));
+  const body = [];
+  for (const l of lines.slice(start + 1)) {
+    if (l.trim() && !l.startsWith(" ".repeat(10))) break;
+    body.push(l.slice(10));
+  }
+  return { names, run: body.join("\n") };
+}
+
+/** Runs the identity step's script in a fresh repository with no inherited git identity. */
+function runIdentityStep(email) {
+  const root = mkdtempSync(join(tmpdir(), "promote-identity-"));
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
+  Object.assign(env, { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", RELEASE_BOT_EMAIL: email });
+  const git = (...args) => spawnSync("git", args, { cwd: root, env, encoding: "utf8" });
+  git("init", "-q");
+  git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base");
+  const step = spawnSync("bash", ["-e", "-c", promoteStep("Git identity for tags").run], { cwd: root, env, encoding: "utf8" });
+  const tag = git("tag", "-a", "promoted-v0.2.0", "HEAD", "-m", "context-economy promoted-v0.2.0");
+  const tagger = git("cat-file", "-p", "promoted-v0.2.0").stdout.match(/^tagger (.+) <(.+)> /m);
+  return { step, tag, tagger: tagger && `${tagger[1]} <${tagger[2]}>` };
+}
+
+test("promote.yml sets the bot's git identity before Promote", () => {
+  const { names } = promoteStep("Git identity for tags");
+  assert.ok(names.indexOf("Git identity for tags") >= 0, names.join(" | "));
+  assert.ok(names.indexOf("Git identity for tags") < names.indexOf("Promote"), names.join(" | "));
+  const bot = "1+context-economy-release[bot]@users.noreply.github.com";
+  const r = runIdentityStep(bot);
+  assert.equal(r.step.status, 0, r.step.stderr);
+  assert.equal(r.tag.status, 0, r.tag.stderr);
+  assert.equal(r.tagger, `context-economy-release[bot] <${bot}>`);
+});
+
+test("promote.yml's identity step fails closed without RELEASE_BOT_EMAIL, and git infers nothing", () => {
+  const r = runIdentityStep("");
+  assert.notEqual(r.step.status, 0);
+  assert.match(r.step.stderr, /RELEASE_BOT_EMAIL is not set/);
+  // useConfigOnly is set first, so even past the failed step git refuses to guess a tagger.
+  assert.notEqual(r.tag.status, 0);
+  assert.match(r.tag.stderr, /identity unknown|tell me who you are/i);
+  assert.equal(r.tagger, null);
 });

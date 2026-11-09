@@ -45,6 +45,16 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
+      - name: Git identity for tags
+        env:
+          RELEASE_BOT_EMAIL: ${{ vars.RELEASE_BOT_EMAIL }} # <id>+<slug>[bot]@users.noreply.github.com
+        # Before promote.mjs: it moves release and then creates the annotated promoted-v tag, so a
+        # missing identity must stop the job here. useConfigOnly keeps git from inferring one.
+        run: |
+          git config user.useConfigOnly true
+          test -n "$RELEASE_BOT_EMAIL" || { echo "RELEASE_BOT_EMAIL is not set" >&2; exit 1; }
+          git config user.name "context-economy-release[bot]"
+          git config user.email "$RELEASE_BOT_EMAIL"
       - name: Promote
         run: node scripts/promote.mjs "$TAG"
         env:
