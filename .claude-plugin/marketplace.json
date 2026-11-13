@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "A Claude Code plugin that cuts context cost: rewrite Bash through a verified RTK executable and keep a metadata-only ledger of tool calls. Public preview: no plugin-initiated network or model calls.",
-    "version": "0.1.1"
+    "version": "0.1.2"
   },
   "plugins": [
     {
