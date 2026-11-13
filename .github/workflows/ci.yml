@@ -53,7 +53,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.head_ref }}
           HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          RELEASE_BOT_EMAIL: ${{ vars.RELEASE_BOT_EMAIL }}
+          CANDIDATE_BOT_EMAIL: ${{ vars.CANDIDATE_BOT_EMAIL }} # the version PR's author
       - name: Review scope
         if: github.event_name == 'pull_request'
         run: node scripts/review-scope.mjs # docs/REVIEWING.md sections for the run summary; never fails

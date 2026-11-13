@@ -23,7 +23,7 @@ concurrency:
 jobs:
   promote:
     runs-on: ubuntu-latest
-    environment: release # protected: deployment branch main only
+    environment: promote # required reviewers: maintainers, no self-review; deployment branch main only
     steps:
       - name: Refuse any ref but main
         if: github.ref != 'refs/heads/main'
@@ -33,8 +33,8 @@ jobs:
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          client-id: ${{ vars.PROMOTE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PROMOTE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-checks: read
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,14 +47,14 @@ jobs:
           node-version: 24
       - name: Git identity for tags
         env:
-          RELEASE_BOT_EMAIL: ${{ vars.RELEASE_BOT_EMAIL }} # <id>+<slug>[bot]@users.noreply.github.com
+          PROMOTE_BOT_EMAIL: ${{ vars.PROMOTE_BOT_EMAIL }} # <id>+<slug>[bot]@users.noreply.github.com
         # Before promote.mjs: it moves release and then creates the annotated promoted-v tag, so a
         # missing identity must stop the job here. useConfigOnly keeps git from inferring one.
         run: |
           git config user.useConfigOnly true
-          test -n "$RELEASE_BOT_EMAIL" || { echo "RELEASE_BOT_EMAIL is not set" >&2; exit 1; }
+          test -n "$PROMOTE_BOT_EMAIL" || { echo "PROMOTE_BOT_EMAIL is not set" >&2; exit 1; }
           git config user.name "context-economy-release[bot]"
-          git config user.email "$RELEASE_BOT_EMAIL"
+          git config user.email "$PROMOTE_BOT_EMAIL"
       - name: Promote
         run: node scripts/promote.mjs "$TAG"
         env:

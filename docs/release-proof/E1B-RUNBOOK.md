@@ -6,7 +6,7 @@ The record is `docs/release-proof/e1b-<date>.md`: host versions, platform, each 
 
 ## Before you start
 
-- The staging repository is public, with the release App, the `release` environment and the rulesets (`docs/MAINTAINER-SETUP.md`). All of these need the owner.
+- The staging repository is public, with the two release Apps, the `candidate` and `promote` environments and the rulesets (`docs/MAINTAINER-SETUP.md`). All of these need the owner.
 - Release **A** is promoted: `release` and `promoted-v<A>` point at A's commit. A and B share the ledger row formats `ce.claude-gateway.v1` and `ce.pi-gateway.v1`.
 - One clean machine or user account for the drill (the **E1b account**), with RTK configured from the README (§1) through `config.json` only, never `CE_RTK_BIN` (below). No earlier install is present under `~/.claude/` or `~/.pi/`. Its data stays in place from step 1 to step 6.
 - B's E1a (step 3) runs on **separate** clean accounts, never the E1b account: E1a installs and uninstalls the candidate, which would disturb the drill's baseline.
@@ -85,7 +85,7 @@ Both installed commits are still `$SHA_A`. No update to B is offered or applied.
 ## 3. Prove and promote B
 
 1. Run E1a for `v<B>` on the separate clean accounts, following `E1A-RUNBOOK.md`, and merge its proof to `main` as a docs-only `no-release` PR.
-2. Promote B: approve the `release` environment. `promoted-v<B>` is created and `release` moves to `$SHA_B`.
+2. Promote B: the other maintainer approves the `promote` environment. `promoted-v<B>` is created and `release` moves to `$SHA_B`.
 3. Record `release`'s SHA: `git rev-parse "promoted-v$B^{commit}"` must equal `$SHA_B`.
 
 ## 4. Update to B

@@ -7,11 +7,11 @@
 //   - A merge commit fails: branches are rebased, never merged into (a merge can carry changes
 //     nobody signed off).
 //   - The one unsigned exception is the generated version PR (head `changeset-release/main` in
-//     this repository) when the commit's author is the release App's bot, RELEASE_BOT_EMAIL. Until
-//     that is set there is no exception.
+//     this repository) when the commit's author is the candidate App's bot, CANDIDATE_BOT_EMAIL
+//     (the App that opens the version PR). Until that is set there is no exception.
 //
 //   BASE_REF=main HEAD_SHA=<sha> HEAD_REF=... HEAD_REPO=o/r GITHUB_REPOSITORY=o/r \
-//     RELEASE_BOT_EMAIL=<id>+<slug>[bot]@users.noreply.github.com node scripts/signoff-gate.mjs
+//     CANDIDATE_BOT_EMAIL=<id>+<slug>[bot]@users.noreply.github.com node scripts/signoff-gate.mjs
 import { pathToFileURL } from "node:url";
 import { makeRunner, must } from "./release-lib.mjs";
 
@@ -57,7 +57,7 @@ function main(env = process.env) {
     headRef: env.HEAD_REF,
     headRepo: env.HEAD_REPO,
     repo: env.GITHUB_REPOSITORY,
-    botEmail: env.RELEASE_BOT_EMAIL,
+    botEmail: env.CANDIDATE_BOT_EMAIL,
   });
   for (const p of gate.problems) console.log(`sign-off gate: ${p}`);
   if (!gate.ok) console.log("See CONTRIBUTING.md, Sign-off, for how to fix the branch.");

@@ -33,6 +33,16 @@ export const ENFORCING = [
 
 export const CODEOWNERS = "* @southcoltech-labs/maintainers";
 
+/**
+ * The only environments, and the one secret each may hold: the candidate App's key for the
+ * self-approved tagging job, the promote App's key for the two-person promotion. A job that names
+ * a secret must be in an environment, and only that environment's secret.
+ */
+export const ENVIRONMENT_SECRETS = { candidate: "CANDIDATE_APP_PRIVATE_KEY", promote: "PROMOTE_APP_PRIVATE_KEY" };
+
+/** Workflows that hold a secret: contents: read alone at the top, and no job widens it. */
+const READ_ONLY = ["promote.yml", "release.yml"];
+
 /** Every rule the workflows (by file name) and CODEOWNERS break, as messages; empty when none. */
 export function workflowProblems(workflows, codeowners) {
   const problems = [];
@@ -46,12 +56,39 @@ export function workflowProblems(workflows, codeowners) {
       if (!/uses: [\w.-]+\/[\w./-]+@[0-9a-f]{40} # v\d/.test(line)) fail(f, `action not pinned to a SHA: ${line.trim()}`);
     }
     for (const [id, job] of Object.entries(jobs(yml))) {
-      if (/secrets\./.test(job) && !/^ {4}environment: release\s*$/m.test(job)) fail(`${f} ${id}`, "secrets outside the release environment");
+      const env = job.match(/^ {4}environment:\s*(\S+)\s*$/m)?.[1];
+      if (/^ {4}environment:/m.test(job) && !(env in ENVIRONMENT_SECRETS)) fail(`${f} ${id}`, `environment ${env ?? "(not a plain name)"} is not one of ${Object.keys(ENVIRONMENT_SECRETS).join(", ")}`);
+      const secrets = [...job.matchAll(/secrets\.(\w+)/g)].map((m) => m[1]);
+      if (secrets.length && !env) fail(`${f} ${id}`, "secrets outside an environment");
+      for (const name of secrets.filter((n) => env && n !== ENVIRONMENT_SECRETS[env])) fail(`${f} ${id}`, `secret ${name} in environment ${env}`);
       for (const step of steps(job)) {
         const downloads = step.match(/\b(curl|wget)\b/g)?.length ?? 0;
         if ((step.match(/sha256sum -c/g)?.length ?? 0) < downloads) fail(`${f} ${id}`, "a download is not checked against a SHA-256");
       }
     }
+  }
+
+  for (const f of READ_ONLY) {
+    const yml = code(workflows[f] ?? "");
+    if (!/^permissions:\n {2}contents: read\n(?! {2}\w)/m.test(yml)) fail(f, "permissions are not contents: read alone");
+    if ((yml.match(/permissions:/g)?.length ?? 0) > 1) fail(f, "a job sets its own permissions");
+  }
+
+  // release.yml: an ungated `plan` job with nothing to leak decides; the candidate job runs only on its yes.
+  const release = jobs(code(workflows["release.yml"] ?? ""));
+  const plan = release.plan ?? "";
+  if (!plan) fail("release.yml", "no plan job");
+  if (/^ {4}environment:/m.test(plan) || /secrets\./.test(plan)) fail("release.yml plan", "has an environment or a secret");
+  for (const step of steps(plan).filter((s) => /uses: actions\/checkout@/.test(s))) {
+    if (!/persist-credentials: false/.test(step)) fail("release.yml plan", "a checkout keeps its credentials");
+  }
+  if (!steps(plan).some((s) => /^ {8}run: node scripts\/release-plan\.mjs\s*$/m.test(s) && /^ {8}id: plan\s*$|^ {6}- id: plan\s*$/m.test(s))) {
+    fail("release.yml plan", "no step `plan` runs node scripts/release-plan.mjs alone");
+  }
+  for (const [id, job] of Object.entries(release)) {
+    if (!/^ {4}environment:\s*candidate\s*$/m.test(job)) continue;
+    if (!/^ {4}needs: plan\s*$/m.test(job)) fail(`release.yml ${id}`, "does not need the plan job");
+    if (!/^ {4}if: needs\.plan\.outputs\.run == 'true'\s*$/m.test(job)) fail(`release.yml ${id}`, "does not run only on the plan's yes");
   }
 
   const ci = code(workflows["ci.yml"] ?? "");
