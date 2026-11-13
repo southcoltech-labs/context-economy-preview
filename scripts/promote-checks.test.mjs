@@ -158,7 +158,7 @@ function promoteStep(name) {
 function runIdentityStep(email) {
   const root = mkdtempSync(join(tmpdir(), "promote-identity-"));
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
-  Object.assign(env, { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", RELEASE_BOT_EMAIL: email });
+  Object.assign(env, { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", PROMOTE_BOT_EMAIL: email });
   const git = (...args) => spawnSync("git", args, { cwd: root, env, encoding: "utf8" });
   git("init", "-q");
   git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base");
@@ -179,10 +179,10 @@ test("promote.yml sets the bot's git identity before Promote", () => {
   assert.equal(r.tagger, `context-economy-release[bot] <${bot}>`);
 });
 
-test("promote.yml's identity step fails closed without RELEASE_BOT_EMAIL, and git infers nothing", () => {
+test("promote.yml's identity step fails closed without PROMOTE_BOT_EMAIL, and git infers nothing", () => {
   const r = runIdentityStep("");
   assert.notEqual(r.step.status, 0);
-  assert.match(r.step.stderr, /RELEASE_BOT_EMAIL is not set/);
+  assert.match(r.step.stderr, /PROMOTE_BOT_EMAIL is not set/);
   // useConfigOnly is set first, so even past the failed step git refuses to guess a tagger.
   assert.notEqual(r.tag.status, 0);
   assert.match(r.tag.stderr, /identity unknown|tell me who you are/i);

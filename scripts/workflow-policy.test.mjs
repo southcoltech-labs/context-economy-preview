@@ -25,6 +25,8 @@ function problemsAfter(file, from, to) {
 
 const SIGNOFF_STEP = "      - name: Commits signed off\n        if: github.event_name == 'pull_request'";
 const REPO_JOB = "    name: repo checks\n    runs-on: ubuntu-latest";
+const PROMOTE_JOB = "  promote:\n    runs-on: ubuntu-latest";
+const PLAN_JOB = "    name: release state\n    runs-on: ubuntu-latest";
 const TOOLING = "      - name: Release tooling tests\n        run: npm run -s test:tooling";
 
 test("the workflows and CODEOWNERS meet every rule", () => {
@@ -40,7 +42,19 @@ const CASES = [
   ["no top-level permissions", "promote.yml", "permissions:\n  contents: read\n", "", /no top-level permissions/],
   ["an action pinned to a tag", "ci.yml", "@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1", "@v7 # v7.0.1", /not pinned to a SHA/],
   ["a secret in ci.yml", "ci.yml", "      - run: npm ci --ignore-scripts", "      - run: echo ${{ secrets.X }}", /uses secrets/],
-  ["a secret outside the release environment", "release.yml", "    environment: release # protected: deployment branch main only\n", "", /secrets outside the release environment/],
+  ["a secret outside an environment", "release.yml", "    environment: candidate # self-approved; deployment branch main only\n", "", /secrets outside an environment/],
+  ["the promote key in the candidate job", "release.yml", "secrets.CANDIDATE_APP_PRIVATE_KEY", "secrets.PROMOTE_APP_PRIVATE_KEY", /secret PROMOTE_APP_PRIVATE_KEY in environment candidate/],
+  ["the candidate key in promotion", "promote.yml", "secrets.PROMOTE_APP_PRIVATE_KEY", "secrets.CANDIDATE_APP_PRIVATE_KEY", /secret CANDIDATE_APP_PRIVATE_KEY in environment promote/],
+  ["promotion moved to the self-approved environment", "promote.yml", "    environment: promote #", "    environment: candidate #", /secret PROMOTE_APP_PRIVATE_KEY in environment candidate/],
+  ["an unknown environment", "promote.yml", "    environment: promote #", "    environment: release #", /environment release is not one of candidate, promote/],
+  ["write permission in release.yml", "release.yml", "permissions:\n  contents: read", "permissions:\n  contents: write", /release\.yml: permissions are not contents: read alone/],
+  ["a job widens permissions in promote.yml", "promote.yml", PROMOTE_JOB, `${PROMOTE_JOB}\n    permissions:\n      contents: write`, /promote\.yml: a job sets its own permissions/],
+  ["the plan job gets the environment", "release.yml", PLAN_JOB, `${PLAN_JOB}\n    environment: candidate`, /plan: has an environment or a secret/],
+  ["the plan job gets a secret", "release.yml", "          GH_TOKEN: ${{ github.token }}", "          GH_TOKEN: ${{ secrets.CANDIDATE_APP_PRIVATE_KEY }}", /plan: has an environment or a secret/],
+  ["the plan checkout keeps credentials", "release.yml", "        with:\n          persist-credentials: false", "        with:\n          persist-credentials: true", /plan: a checkout keeps its credentials/],
+  ["the plan step replaced", "release.yml", "        run: node scripts/release-plan.mjs", "        run: echo run=true >> \"$GITHUB_OUTPUT\"", /no step `plan` runs/],
+  ["the candidate job ignores the plan", "release.yml", "    if: needs.plan.outputs.run == 'true'\n", "", /does not run only on the plan's yes/],
+  ["the candidate job does not need the plan", "release.yml", "    needs: plan\n", "", /does not need the plan job/],
   ["a checkout keeps credentials", "ci.yml", "          persist-credentials: false", "          persist-credentials: true", /keeps its credentials/],
   ["an unchecked download", "ci.yml", "sha256sum -c -", "true", /not checked against a SHA-256/],
   ["a step tolerates failure", "ci.yml", SIGNOFF_STEP, SIGNOFF_STEP.replace("\n", "\n        continue-on-error: true\n"), /continue-on-error/],

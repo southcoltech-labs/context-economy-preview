@@ -33,12 +33,17 @@ change to a check, a workflow or this file.
 
 - [ ] No `pull_request_target` or `workflow_run` trigger. Contributor code never runs with secrets
       or a write token (CI).
-- [ ] Each workflow sets top-level `permissions`; `ci.yml` keeps `contents: read` only, with no job
-      widening it (CI).
+- [ ] Each workflow sets top-level `permissions`; `ci.yml`, `release.yml` and `promote.yml` keep
+      `contents: read` only, with no job widening it (CI). Writes use an App token, minted only
+      inside an environment.
 - [ ] Every action is pinned to a full commit SHA, with its version in a comment (CI). A new
       action, or a new SHA, comes from the action's own repository, and its release was read.
 - [ ] `ci.yml` uses no secrets, and its checkouts keep `persist-credentials: false` (CI). Secrets
-      appear only in jobs that run in the `release` environment (CI).
+      appear only in jobs that run in an environment, each only its own App's key:
+      `CANDIDATE_APP_PRIVATE_KEY` in `candidate`, `PROMOTE_APP_PRIVATE_KEY` in `promote`. No other
+      environment is used (CI).
+- [ ] In `release.yml` the `plan` job has no environment and no secret, its checkout keeps no
+      credentials, and the `candidate` job needs it and runs only on its yes (CI).
 - [ ] Every downloaded tool is pinned to a version and checked against a SHA-256 (CI).
 - [ ] The sign-off, changeset, tooling and gitleaks steps still run, on every pull request, alone
       in their step, and no job or step tolerates failure or is skipped by a condition (CI). A
@@ -64,6 +69,10 @@ change to a check, a workflow or this file.
       describe: tags are never moved, `release` moves only by fast-forward, candidates are read
       with `git show` and never run.
 - [ ] Any external command goes through the runner, so tests can drive it.
+- [ ] `scripts/release-plan.mjs` keeps every case in its tests: a pending changeset that releases
+      something always runs, even at `0.0.0`; a tag without its GitHub release runs, to repair it;
+      a state it cannot read fails the job and is never taken as "nothing to do". It decides only
+      whether to run; what to tag stays in `scripts/tag-release.mjs`.
 
 ## Dependencies
 
@@ -102,10 +111,16 @@ change to a check, a workflow or this file.
 
 ## The version pull request
 
-Head branch `changeset-release/main`, opened by the release App.
+Head branch `changeset-release/main`, opened by the candidate App (`context-economy-candidate[bot]`).
+One maintainer approves it: the bot pushed last, so the `main` ruleset allows that. GitHub checks
+only the branch and the bot's identity, not that the diff is generated, so the approver does.
 
-- [ ] It changes only versions, changelogs and the consumed changesets.
-- [ ] Its commits are the App's own (the sign-off gate allows them only there).
+- [ ] It changes only versions, changelogs and the consumed changesets: every manifest at the new
+      version, `CHANGELOG.md`, the deleted changesets, nothing else.
+- [ ] Its commits are the App's own (the sign-off gate allows them only there), and no person
+      pushed to the branch.
+- [ ] On any other change, or a push by a person, do not approve: close it or ask the other
+      maintainer.
 
 ## Protections outside the repository
 
@@ -119,3 +134,12 @@ approving its own change to a check, a workflow or this file:
 - The `main` ruleset requires review from code owners, dismisses approvals when new commits are
   pushed, and requires the last push to be approved by someone other than its author.
 - Actions require approval before running workflows from outside contributors.
+- Two environments, each limited to deployment branch `main`, with no admin bypass. `candidate`
+  holds only the candidate App's key and needs a maintainer's approval, which may be the one who
+  merged: a candidate reaches no user who follows the README. `promote` holds only the promote App's key and requires a maintainer other
+  than the one who started the run. That check compares with the run's original actor, not a
+  re-runner, so a failed promotion is started as a fresh run and never re-run
+  (`docs/MAINTAINER-SETUP.md`, "Running a promotion").
+- Tag rules: `v*` tags are created only by the candidate App, `promoted-v*` tags only by the
+  promote App (`context-economy-release`), and no tag is updated or deleted, with no bypass. Only
+  the promote App writes `release`.

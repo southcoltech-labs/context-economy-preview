@@ -2,6 +2,9 @@
 
 # On main: open or update the version PR; once it merges, tag the version commit and create
 # the GitHub release. Nothing here moves `release`; promote.yml does.
+# Two jobs. `plan` has no environment, no secrets and a read-only token; it reads the release
+# state (scripts/release-plan.mjs) and says whether there is anything to do. Only then does
+# `release` run, in the self-approved `candidate` environment with the candidate App's key.
 name: release
 
 on:
@@ -16,9 +19,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  plan:
+    name: release state
     runs-on: ubuntu-latest
-    environment: release # protected: deployment branch main only
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+    steps:
+      - name: Refuse any ref but main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "release runs only from refs/heads/main, not ${{ github.ref }}" >&2
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: plan
+        name: Release state
+        run: node scripts/release-plan.mjs # no dependencies; fails rather than answer "nothing" on an unread state
+        env:
+          GH_TOKEN: ${{ github.token }} # contents: read, the workflow's only permission
+
+  release:
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    environment: candidate # self-approved; deployment branch main only
     steps:
       - name: Refuse any ref but main
         if: github.ref != 'refs/heads/main'
@@ -28,8 +56,8 @@ jobs:
       - id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          client-id: ${{ vars.CANDIDATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CANDIDATE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -42,11 +70,11 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Git identity for tags
         env:
-          RELEASE_BOT_EMAIL: ${{ vars.RELEASE_BOT_EMAIL }} # <id>+<slug>[bot]@users.noreply.github.com
+          CANDIDATE_BOT_EMAIL: ${{ vars.CANDIDATE_BOT_EMAIL }} # <id>+<slug>[bot]@users.noreply.github.com
         run: |
-          test -n "$RELEASE_BOT_EMAIL" || { echo "RELEASE_BOT_EMAIL is not set" >&2; exit 1; }
-          git config user.name "context-economy-release[bot]"
-          git config user.email "$RELEASE_BOT_EMAIL"
+          test -n "$CANDIDATE_BOT_EMAIL" || { echo "CANDIDATE_BOT_EMAIL is not set" >&2; exit 1; }
+          git config user.name "context-economy-candidate[bot]"
+          git config user.email "$CANDIDATE_BOT_EMAIL"
       - uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           version-script: npm run -s version

@@ -8,7 +8,7 @@ import { commitsBetween, signoffGate, signoffs } from "./signoff-gate.mjs";
 import { must } from "./release-lib.mjs";
 import { commitAll, fixtureRepo } from "./test-fixture.mjs";
 
-const BOT = "123+context-economy-release[bot]@users.noreply.github.com";
+const BOT = "123+context-economy-candidate[bot]@users.noreply.github.com";
 const commit = (extra = {}) => ({
   sha: "a".repeat(40), parents: ["b".repeat(40)], authorName: "Ada Lovelace", authorEmail: "ada@example.com",
   message: "Fix it\n\nSigned-off-by: Ada Lovelace <ada@example.com>\n", ...extra,
@@ -41,7 +41,7 @@ test("a merge commit fails even when signed off", () => {
 });
 
 test("the release bot may commit unsigned only in the version PR from this repository", () => {
-  const bot = commit({ authorName: "context-economy-release[bot]", authorEmail: BOT, message: "Version packages\n" });
+  const bot = commit({ authorName: "context-economy-candidate[bot]", authorEmail: BOT, message: "Version packages\n" });
   const version = { headRef: "changeset-release/main" };
   assert.equal(gate([bot], version).ok, true);
   assert.equal(gate([bot]).ok, false, "another branch");
